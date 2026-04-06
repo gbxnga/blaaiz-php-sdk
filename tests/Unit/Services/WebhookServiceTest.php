@@ -1,0 +1,196 @@
+<?php
+
+use Blaaiz\PhpSdk\Services\WebhookService;
+use Blaaiz\PhpSdk\Exceptions\BlaaizException;
+use Blaaiz\PhpSdk\BlaaizClient;
+
+describe('WebhookService', function () {
+    beforeEach(function () {
+        $this->mockClient = Mockery::mock(BlaaizClient::class);
+        $this->service = new WebhookService($this->mockClient);
+    });
+
+    afterEach(function () {
+        Mockery::close();
+    });
+
+    it('validates required fields for register', function () {
+        expect(fn() => $this->service->register([]))
+            ->toThrow(BlaaizException::class, 'collection_url is required');
+
+        expect(fn() => $this->service->register(['collection_url' => 'https://example.com/collection']))
+            ->toThrow(BlaaizException::class, 'payout_url is required');
+    });
+
+    it('calls makeRequest with correct parameters for register', function () {
+        $webhookData = [
+            'collection_url' => 'https://example.com/collection',
+            'payout_url' => 'https://example.com/payout'
+        ];
+
+        $this->mockClient
+            ->shouldReceive('makeRequest')
+            ->once()
+            ->with('POST', '/api/external/webhook', $webhookData)
+            ->andReturn(['data' => ['id' => 'webhook-123']]);
+
+        $result = $this->service->register($webhookData);
+
+        expect($result)->toBe(['data' => ['id' => 'webhook-123']]);
+    });
+
+    it('calls makeRequest with correct parameters for get', function () {
+        $this->mockClient
+            ->shouldReceive('makeRequest')
+            ->once()
+            ->with('GET', '/api/external/webhook')
+            ->andReturn(['data' => ['collection_url' => 'https://example.com/collection']]);
+
+        $result = $this->service->get();
+
+        expect($result)->toBe(['data' => ['collection_url' => 'https://example.com/collection']]);
+    });
+
+    it('calls makeRequest with correct parameters for update', function () {
+        $webhookData = ['collection_url' => 'https://example.com/new-collection'];
+
+        $this->mockClient
+            ->shouldReceive('makeRequest')
+            ->once()
+            ->with('PUT', '/api/external/webhook', $webhookData)
+            ->andReturn(['data' => ['id' => 'webhook-123']]);
+
+        $result = $this->service->update($webhookData);
+
+        expect($result)->toBe(['data' => ['id' => 'webhook-123']]);
+    });
+
+    it('validates required fields for replay', function () {
+        expect(fn() => $this->service->replay([]))
+            ->toThrow(BlaaizException::class, 'transaction_id is required');
+    });
+
+    it('calls makeRequest with correct parameters for replay', function () {
+        $replayData = ['transaction_id' => 'txn-123'];
+
+        $this->mockClient
+            ->shouldReceive('makeRequest')
+            ->once()
+            ->with('POST', '/api/external/webhook/replay', $replayData)
+            ->andReturn(['data' => ['status' => 'replayed']]);
+
+        $result = $this->service->replay($replayData);
+
+        expect($result)->toBe(['data' => ['status' => 'replayed']]);
+    });
+
+    it('validates required parameters for verifySignature', function () {
+        expect(fn() => $this->service->verifySignature('', 'sig', 'timestamp', 'secret'))
+            ->toThrow(BlaaizException::class, 'Payload is required for signature verification');
+
+        expect(fn() => $this->service->verifySignature('payload', '', 'timestamp', 'secret'))
+            ->toThrow(BlaaizException::class, 'Signature is required for signature verification');
+
+        expect(fn() => $this->service->verifySignature('payload', 'sig', '', 'secret'))
+            ->toThrow(BlaaizException::class, 'Timestamp is required for signature verification');
+
+        expect(fn() => $this->service->verifySignature('payload', 'sig', 'timestamp', ''))
+            ->toThrow(BlaaizException::class, 'Webhook secret is required for signature verification');
+    });
+
+    it('returns true for valid signature', function () {
+        $payload = '{"transaction_id":"txn_123","status":"completed"}';
+        $secret = 'webhook_secret_key';
+        $timestamp = '1234567890';
+        $signed = $timestamp . '.' . $payload;
+        $validSignature = hash_hmac('sha256', $signed, $secret);
+
+        $result = $this->service->verifySignature($payload, $validSignature, $timestamp, $secret);
+        expect($result)->toBeTrue();
+    });
+
+    it('returns false for invalid signature', function () {
+        $payload = '{"transaction_id":"txn_123","status":"completed"}';
+        $secret = 'webhook_secret_key';
+        $timestamp = '1234567890';
+        $invalidSignature = 'invalid_signature';
+
+        $result = $this->service->verifySignature($payload, $invalidSignature, $timestamp, $secret);
+        expect($result)->toBeFalse();
+    });
+
+    it('works with object payload for verifySignature', function () {
+        $payload = '{"transaction_id":"txn_123","status":"completed"}';
+        $secret = 'webhook_secret_key';
+        $timestamp = '1234567890';
+        $signed = $timestamp . '.' . $payload;
+        $validSignature = hash_hmac('sha256', $signed, $secret);
+
+        $result = $this->service->verifySignature($payload, $validSignature, $timestamp, $secret);
+        expect($result)->toBeTrue();
+    });
+
+    it('validates signature and returns event for constructEvent', function () {
+        $payload = '{"transaction_id":"txn_123","status":"completed"}';
+        $secret = 'webhook_secret_key';
+        $timestamp = '1234567890';
+        $signed = $timestamp . '.' . $payload;
+        $validSignature = hash_hmac('sha256', $signed, $secret);
+
+        $event = $this->service->constructEvent($payload, $validSignature, $timestamp, $secret);
+
+        expect($event['transaction_id'])->toBe('txn_123');
+        expect($event['status'])->toBe('completed');
+        expect($event['verified'])->toBeTrue();
+        expect($event['timestamp'])->toBeString();
+    });
+
+    it('throws error for invalid signature in constructEvent', function () {
+        $payload = '{"transaction_id":"txn_123","status":"completed"}';
+        $secret = 'webhook_secret_key';
+        $timestamp = '1234567890';
+        $invalidSignature = 'invalid_signature';
+
+        expect(fn() => $this->service->constructEvent($payload, $invalidSignature, $timestamp, $secret))
+            ->toThrow(BlaaizException::class, 'Invalid webhook signature');
+    });
+
+    it('throws error for invalid JSON in constructEvent', function () {
+        $payload = 'invalid json';
+        $secret = 'webhook_secret_key';
+        $timestamp = '1234567890';
+        $signed = $timestamp . '.' . $payload;
+        $validSignature = hash_hmac('sha256', $signed, $secret);
+
+        expect(fn() => $this->service->constructEvent($payload, $validSignature, $timestamp, $secret))
+            ->toThrow(BlaaizException::class, 'Invalid webhook payload: unable to parse JSON');
+    });
+
+    it('works with object payload for constructEvent', function () {
+        $payload = '{"transaction_id":"txn_123","status":"completed"}';
+        $secret = 'webhook_secret_key';
+        $timestamp = '1234567890';
+        $signed = $timestamp . '.' . $payload;
+        $validSignature = hash_hmac('sha256', $signed, $secret);
+
+        $event = $this->service->constructEvent($payload, $validSignature, $timestamp, $secret);
+
+        expect($event['transaction_id'])->toBe('txn_123');
+        expect($event['status'])->toBe('completed');
+        expect($event['verified'])->toBeTrue();
+    });
+
+    it('calls makeRequest with correct parameters for simulateInteracWebhook', function () {
+        $simulateData = ['interac_email' => 'test@example.com'];
+
+        $this->mockClient
+            ->shouldReceive('makeRequest')
+            ->once()
+            ->with('POST', '/api/external/mock/simulate-webhook/interac', $simulateData)
+            ->andReturn(['message' => 'Webhook sent successfully']);
+
+        $result = $this->service->simulateInteracWebhook($simulateData);
+
+        expect($result)->toBe(['message' => 'Webhook sent successfully']);
+    });
+});

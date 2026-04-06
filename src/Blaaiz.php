@@ -1,0 +1,213 @@
+<?php
+
+namespace Blaaiz\PhpSdk;
+
+use Blaaiz\PhpSdk\Exceptions\BlaaizException;
+use Blaaiz\PhpSdk\Services\BankService;
+use Blaaiz\PhpSdk\Services\CollectionService;
+use Blaaiz\PhpSdk\Services\CurrencyService;
+use Blaaiz\PhpSdk\Services\CustomerService;
+use Blaaiz\PhpSdk\Services\FeesService;
+use Blaaiz\PhpSdk\Services\FileService;
+use Blaaiz\PhpSdk\Services\PayoutService;
+use Blaaiz\PhpSdk\Services\RateService;
+use Blaaiz\PhpSdk\Services\SwapService;
+use Blaaiz\PhpSdk\Services\TransactionService;
+use Blaaiz\PhpSdk\Services\VirtualBankAccountService;
+use Blaaiz\PhpSdk\Services\WalletService;
+use Blaaiz\PhpSdk\Services\WebhookService;
+
+class Blaaiz
+{
+    protected BlaaizClient $client;
+
+    public CustomerService $customers;
+    public CollectionService $collections;
+    public PayoutService $payouts;
+    public WalletService $wallets;
+    public VirtualBankAccountService $virtualBankAccounts;
+    public TransactionService $transactions;
+    public BankService $banks;
+    public CurrencyService $currencies;
+    public FeesService $fees;
+    public FileService $files;
+    public WebhookService $webhooks;
+    public RateService $rates;
+    public SwapService $swaps;
+
+    public function __construct(array $options = [])
+    {
+        $this->client = new BlaaizClient($options);
+
+        $this->customers = new CustomerService($this->client);
+        $this->collections = new CollectionService($this->client);
+        $this->payouts = new PayoutService($this->client);
+        $this->wallets = new WalletService($this->client);
+        $this->virtualBankAccounts = new VirtualBankAccountService($this->client);
+        $this->transactions = new TransactionService($this->client);
+        $this->banks = new BankService($this->client);
+        $this->currencies = new CurrencyService($this->client);
+        $this->fees = new FeesService($this->client);
+        $this->files = new FileService($this->client);
+        $this->webhooks = new WebhookService($this->client);
+        $this->rates = new RateService($this->client);
+        $this->swaps = new SwapService($this->client);
+    }
+
+    public function testConnection(): bool
+    {
+        try {
+            $this->currencies->list();
+            return true;
+        } catch (BlaaizException $e) {
+            return false;
+        }
+    }
+
+    public function createCompletePayout(array $payoutConfig): array
+    {
+        $customerData = $payoutConfig['customer_data'] ?? null;
+        $payoutData = $payoutConfig['payout_data'] ?? [];
+
+        try {
+            $customerId = $payoutData['customer_id'] ?? null;
+
+            if (!$customerId && $customerData) {
+                $customerResult = $this->customers->create($customerData);
+                $customerId = $customerResult['data']['data']['id'];
+            }
+
+            $feeBreakdown = $this->fees->getBreakdown([
+                'from_currency_id' => $payoutData['from_currency_id'],
+                'to_currency_id' => $payoutData['to_currency_id'],
+                'from_amount' => $payoutData['from_amount'],
+            ]);
+
+            $payoutResult = $this->payouts->initiate(array_merge($payoutData, [
+                'customer_id' => $customerId,
+            ]));
+
+            return [
+                'customer_id' => $customerId,
+                'payout' => $payoutResult['data'],
+                'fees' => $feeBreakdown['data'],
+            ];
+
+        } catch (BlaaizException $e) {
+            throw new BlaaizException(
+                "Complete payout failed: {$e->getMessage()}",
+                $e->getStatus(),
+                $e->getErrorCode()
+            );
+        }
+    }
+
+    public function createCompleteCollection(array $collectionConfig): array
+    {
+        $customerData = $collectionConfig['customer_data'] ?? null;
+        $collectionData = $collectionConfig['collection_data'] ?? [];
+        $createVBA = $collectionConfig['create_vba'] ?? false;
+
+        try {
+            $customerId = $collectionData['customer_id'] ?? null;
+
+            if (!$customerId && $customerData) {
+                $customerResult = $this->customers->create($customerData);
+                $customerId = $customerResult['data']['data']['id'];
+            }
+
+            $vbaData = null;
+            if ($createVBA) {
+                $vbaResult = $this->virtualBankAccounts->create([
+                    'wallet_id' => $collectionData['wallet_id'],
+                    'account_name' => $customerData 
+                        ? "{$customerData['first_name']} {$customerData['last_name']}" 
+                        : 'Customer Account',
+                ]);
+                $vbaData = $vbaResult['data'];
+            }
+
+            $collectionResult = $this->collections->initiate(array_merge($collectionData, [
+                'customer_id' => $customerId,
+            ]));
+
+            return [
+                'customer_id' => $customerId,
+                'collection' => $collectionResult['data'],
+                'virtual_account' => $vbaData,
+            ];
+
+        } catch (BlaaizException $e) {
+            throw new BlaaizException(
+                "Complete collection failed: {$e->getMessage()}",
+                $e->getStatus(),
+                $e->getErrorCode()
+            );
+        }
+    }
+
+    public function customers(): CustomerService
+    {
+        return $this->customers;
+    }
+
+    public function collections(): CollectionService
+    {
+        return $this->collections;
+    }
+
+    public function payouts(): PayoutService
+    {
+        return $this->payouts;
+    }
+
+    public function wallets(): WalletService
+    {
+        return $this->wallets;
+    }
+
+    public function virtualBankAccounts(): VirtualBankAccountService
+    {
+        return $this->virtualBankAccounts;
+    }
+
+    public function transactions(): TransactionService
+    {
+        return $this->transactions;
+    }
+
+    public function banks(): BankService
+    {
+        return $this->banks;
+    }
+
+    public function currencies(): CurrencyService
+    {
+        return $this->currencies;
+    }
+
+    public function fees(): FeesService
+    {
+        return $this->fees;
+    }
+
+    public function files(): FileService
+    {
+        return $this->files;
+    }
+
+    public function webhooks(): WebhookService
+    {
+        return $this->webhooks;
+    }
+
+    public function rates(): RateService
+    {
+        return $this->rates;
+    }
+
+    public function swaps(): SwapService
+    {
+        return $this->swaps;
+    }
+}

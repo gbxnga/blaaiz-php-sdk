@@ -1,0 +1,68 @@
+{
+  "name": "blaaiz/blaaiz-php-sdk",
+  "description": "Official framework-agnostic PHP SDK for the Blaaiz RaaS (Remittance as a Service) API",
+  "type": "library",
+  "license": "MIT",
+  "keywords": [
+    "blaaiz",
+    "payments",
+    "remittance",
+    "fintech",
+    "api",
+    "sdk",
+    "php",
+    "payout",
+    "collection",
+    "raas",
+    "cryptocurrency",
+    "bank-transfer",
+    "interac",
+    "open-banking"
+  ],
+  "authors": [
+    {
+      "name": "Blaaiz",
+      "email": "onboarding@blaaiz.com",
+      "homepage": "https://business.blaaiz.com"
+    }
+  ],
+  "homepage": "https://docs.business.blaaiz.com",
+  "support": {
+    "issues": "https://github.com/blaaiz/blaaiz-php-sdk/issues",
+    "source": "https://github.com/blaaiz/blaaiz-php-sdk"
+  },
+  "require": {
+    "php": "^8.1",
+    "guzzlehttp/guzzle": "^7.0"
+  },
+  "require-dev": {
+    "pestphp/pest": "^3.0",
+    "phpunit/phpunit": "^11.0",
+    "mockery/mockery": "^1.5",
+    "phpstan/phpstan": "^1.10"
+  },
+  "autoload": {
+    "psr-4": {
+      "Blaaiz\\PhpSdk\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Blaaiz\\PhpSdk\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "pest",
+    "test-coverage": "pest --coverage",
+    "analyse": "phpstan analyse"
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "config": {
+    "sort-packages": true,
+    "allow-plugins": {
+      "php-http/discovery": true,
+      "pestphp/pest-plugin": true
+    }
+  }
+}
